@@ -1,0 +1,236 @@
+---
+title: "Project2"
+author: "Corey"
+date: "2023-03-03"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(skimr)
+library(survival)
+library(survminer)
+library(fitdistrplus)
+ds <- read_csv("https://raw.githubusercontent.com/bobbyjy/599Project2/main/project2cleaned.csv")
+
+ds <- ds %>% 
+  mutate(left = length, right=length)
+
+#weekend games at night
+#weekend games during the day
+#week games at night
+#week games during the day
+
+ds <- ds %>% 
+  mutate(at_bat_BINS = cut_number(at_bats,3), hit_BINS = cut_number(hit,3), rbi_BINS = cut_number(rbi, 3), walk_BINS = cut_number(walk, 3), strkout = cut_number(strkout,3), weekend_weekday = ifelse(dow=="Sat" | dow=="Sun", "Weekend", "Weekday")) %>% 
+  dplyr::select(-at_bats, -hit, -rbi, -walk, -strkout)
+
+ds
+```
+
+## R Markdown
+
+km or para curve
+results of para survival model
+diagnostics to verify goodness of fit
+
+```{r}
+#Day of the week
+survObj = Surv(ds$left, ds$right, type="interval2")
+
+km=survfit(survObj~ds$htm)
+#summary(km)
+
+a <- ggsurvplot(fit=km, data=ds, palette="YlOrRd",risk.table = F,conf.int=F) +
+    labs(
+        title="Failure time of Components",
+        x="Hours"
+    ) 
+
+a$plot + 
+  labs(caption = "by: Corey Cassell") + 
+  coreyplottheme
+#weekday vs weekend
+```
+
+## Including Plots
+```{r}
+#Day of the week
+
+survObj = Surv(ds$left, ds$right, type="interval2")
+
+km=survfit(survObj~ds$dow+ds$daynt)
+#summary(km)
+
+ggsurvplot(fit=km, data=ds,risk.table = F,conf.int=F, legend.position = "right") +
+    labs(
+        title="Game Length for Night/Day and DOW",
+        x="Hours"
+    ) 
+
+# a$plot + 
+#   labs(caption = "by: Corey Cassell") + 
+#   coreyplottheme
+#weekday vs weekend
+km
+```
+```{r}
+#regression
+survObj = Surv(ds$left, ds$right, type="interval2")
+myMod <- survreg(survObj~ds$dow+ds$daynt, dist = "weibull")
+summary(myMod)
+```
+```{r}
+## Diagnostic
+## Create residual diagnostic plots for regression using day of week and day/night
+weiMyMod <- survreg(survObj~ds$dow+ds$daynt, dist = "weibull")
+
+devresids=residuals(weiMyMod,type="deviance")
+
+ds %>%
+    mutate(devresids=devresids) %>%
+    ggplot(aes(y=devresids,x=dow,fill=dow)) +
+        geom_boxplot() +
+        geom_hline(yintercept = 0,linetype="dotted") +
+        labs(title="Deviance Residuals for Weibull Model", x="Day of Week",y="Deviance Residuals") +
+        coord_flip() +
+        theme_minimal()
+
+ds %>%
+    mutate(devresids=devresids) %>%
+    ggplot(aes(y=devresids,x=daynt,fill=daynt)) +
+        geom_boxplot() +
+        geom_hline(yintercept = 0,linetype="dotted") +
+        labs(title="Deviance Residuals for Weibull Model", x="Day/Night",y="Deviance Residuals") +
+        coord_flip() +
+        theme_minimal()
+
+lnormMyMod <- survreg(survObj~ds$dow+ds$daynt, dist = "lognormal")
+
+devresids=residuals(lnormMyMod,type="deviance")
+
+ds %>%
+    mutate(devresids=devresids) %>%
+    ggplot(aes(y=devresids,x=dow,fill=dow)) +
+        geom_boxplot() +
+        geom_hline(yintercept = 0,linetype="dotted") +
+        labs(title="Deviance Residuals for Lognormal Model", x="Day of Week",y="Deviance Residuals") +
+        coord_flip() +
+        theme_minimal()
+
+ds %>%
+    mutate(devresids=devresids) %>%
+    ggplot(aes(y=devresids,x=daynt,fill=daynt)) +
+        geom_boxplot() +
+        geom_hline(yintercept = 0,linetype="dotted") +
+        labs(title="Deviance Residuals for Lognormal Model", x="Day/Night",y="Deviance Residuals") +
+        coord_flip() +
+        theme_minimal()
+
+expMyMod <- survreg(survObj~ds$dow+ds$daynt, dist = "exponential")
+
+devresids=residuals(expMyMod,type="deviance")
+
+ds %>%
+    mutate(devresids=devresids) %>%
+    ggplot(aes(y=devresids,x=dow,fill=dow)) +
+        geom_boxplot() +
+        geom_hline(yintercept = 0,linetype="dotted") +
+        labs(title="Deviance Residuals for Exponential Model", x="Day of Week",y="Deviance Residuals") +
+        coord_flip() +
+        theme_minimal()
+
+ds %>%
+    mutate(devresids=devresids) %>%
+    ggplot(aes(y=devresids,x=daynt,fill=daynt)) +
+        geom_boxplot() +
+        geom_hline(yintercept = 0,linetype="dotted") +
+        labs(title="Deviance Residuals for Exponential Model", x="Day/Night",y="Deviance Residuals") +
+        coord_flip() +
+        theme_minimal()
+
+```
+
+```{r}
+## comparison of 
+intervalds <- ds %>% 
+  dplyr::select(left,right) 
+
+expfit <- fitdistcens(data.frame(intervalds),"weibull",fix.arg=list(shape=1))
+
+weibullFit<-fitdistcens(data.frame(intervalds),"weibull")
+
+lognormalFit=fitdistcens(data.frame(intervalds),"lnorm")
+
+qqcompcens(list(expfit,weibullFit,lognormalFit),
+            legendtext=c("Exponential","Weibull","Lognormal"),
+            xlab="Failure Time",
+            #xlim=c(0,0.35),ylim=c(0,0.3),
+           xlim=c(0,350),
+            plotstyle = "ggplot")
+
+expfit$aic
+lognormalFit$aic 
+weibullFit$aic
+
+
+
+```
+```{r}
+# expfit
+# 
+# weibullFit
+# 
+# lognormalFit
+
+devresids=residuals(expfit,type="deviance")
+
+ds %>%
+    mutate(devresids=devresids) %>%
+    ggplot(aes(y=devresids,x=dow,fill=dow)) +
+        geom_boxplot() +
+        geom_hline(yintercept = 0,linetype="dotted") +
+        labs(title="Deviance Residuals for Weibull Model", x="Test group",y="Deviance Residuals") +
+        coord_flip() +
+        theme_minimal()
+
+ds %>%
+    mutate(devresids=devresids) %>%
+    ggplot(aes(y=devresids,x=daynt,fill=daynt)) +
+        geom_boxplot() +
+        geom_hline(yintercept = 0,linetype="dotted") +
+        labs(title="Deviance Residuals for Weibull Model", x="Age",y="Deviance Residuals") +
+        coord_flip() +
+        theme_minimal()
+```
+
+```{r}
+ds %>% 
+  group_by(dow) %>% 
+  summarise(dow,n = n()) %>% 
+  distinct() %>% 
+  ggplot()+
+  geom_col(aes(reorder(dow,n),n,fill=n),show.legend = FALSE)+
+    theme_bw()+
+  theme(axis.title.x = element_blank())+
+  labs(y="Game Count", title = "Monday & Thursday had the lowest sample representation:")
+
+ds %>% 
+  group_by(daynt,dow) %>% 
+  summarise(dow,n = n()) %>% 
+  distinct() %>% 
+  ggplot()+
+  geom_col(aes(reorder(dow,n),n, fill = n), show.legend = FALSE)+
+  facet_grid(daynt~.)+
+  theme_bw()+
+  theme(axis.title.x = element_blank())+
+  labs(y="Game Count", title = "Most night games occur during weekdays:")
+
+
+```
+
+
+
+
+
